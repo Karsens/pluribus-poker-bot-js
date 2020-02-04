@@ -1,0 +1,16 @@
+{
+  "name": "pluribus",
+  "version": "1.0.0",
+  "description": "",
+  "main": "pluribus.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "run": "node --max-old-space-size=16384 pluribus"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "pokersolver": "^2.1.3",
+    "treemap-js": "^1.2.1"
+  }
+}
