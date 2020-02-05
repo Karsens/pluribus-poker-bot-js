@@ -160,7 +160,7 @@ function needsChanceNode(h) {
       : "";
 
   const everyoneDidAction =
-    lastBettingRoundActions.split(",").length - 1 > PLAYERS.length;
+    lastBettingRoundActions.split(",").length - 1 >= PLAYERS.length;
 
   const playersLeft = h.pFolded.map(a => !a);
 
@@ -297,19 +297,19 @@ function doAction(h, action, p) {
 
   switch (action) {
     case "fold":
-      ha.pFolded[p] = true;
+      ha.pFolded[ha.currentPlayer] = true;
       ha.log = ha.log.concat(["Player " + ha.currentPlayer + " folds"]);
       break;
     case "call":
       //calls the highest bet
 
       highestBet = Math.max(...ha.pBet);
-      myBet = ha.pBet[p];
+      myBet = ha.pBet[ha.currentPlayer];
       diff = highestBet - myBet;
 
-      ha.pChips[p] = ha.pChips[p] - diff;
-      ha.pBet[p] = highestBet;
-      ha.pMPIP[p] = ha.pMPIP[p] + diff;
+      ha.pChips[ha.currentPlayer] = ha.pChips[ha.currentPlayer] - diff;
+      ha.pBet[ha.currentPlayer] = highestBet;
+      ha.pMPIP[ha.currentPlayer] = ha.pMPIP[ha.currentPlayer] + diff;
       ha.log = ha.log.concat(["Player " + ha.currentPlayer + " calls " + diff]);
 
       break;
@@ -320,14 +320,14 @@ function doAction(h, action, p) {
     case "bet1":
       const potSize = ha.chips + ha.pBet.reduce((a, b) => a + b, 0);
 
-      let betSize = Math.round(potSize / 2);
-      if (ha.pChips[p] < betSize) {
-        betSize = ha.pChips[p];
+      let betSize = potSize;
+      if (ha.pChips[ha.currentPlayer] < betSize) {
+        betSize = ha.pChips[ha.currentPlayer];
       }
 
-      ha.pChips[p] = ha.pChips[p] - betSize;
-      ha.pMPIP[p] = ha.pMPIP[p] + betSize;
-      ha.pBet[p] = betSize;
+      ha.pChips[ha.currentPlayer] = ha.pChips[ha.currentPlayer] - betSize;
+      ha.pMPIP[ha.currentPlayer] = ha.pMPIP[ha.currentPlayer] + betSize;
+      ha.pBet[ha.currentPlayer] = betSize;
 
       ha.log = ha.log.concat([
         "Player " + ha.currentPlayer + " bets " + betSize
@@ -486,7 +486,6 @@ function traverseMCCFR_P(h, p) {
  * update the reegrets for Player i
  */
 function traverseMCCFR(h, p) {
-  // console.log("traverseMCCFR", p);
   if (isTerminal(h)) {
     const h2 = calculateWinner(h);
     const utility = getUtility(h2, p);
