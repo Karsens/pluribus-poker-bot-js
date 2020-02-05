@@ -131,7 +131,7 @@ function calculateWinner(h) {
     showdownWinner = h.pCards.findIndex(c => c === showdownWinnerCards[0]); //for now, ties are not explored
   }
 
-  const whoDidnt = h.pLastAction.findIndex(a => a !== "fold" && a !== "none");
+  const whoDidnt = h.pFolded.findIndex(a => !a);
 
   const onlyPlayerLeft = allOthersFolded(h) ? whoDidnt : -1;
 
@@ -197,16 +197,26 @@ function getCurrentPlayerFromInfoSet(infoSet) {
 function getInformationSet(h, p) {
   const actions = getActions(h);
   const infoSet =
-    p + ":" + h.preflop ||
-    "" + h.board[0] ||
-    "" + h.board[1] ||
-    "" + h.board[2] ||
-    "" + h.flop ||
-    "" + h.board[3] ||
-    "" + h.turn ||
-    "" + h.board[4] ||
-    "" + h.river ||
-    "";
+    p +
+    ":preflop:" +
+    h.preflop +
+    "[" +
+    h.board[0] +
+    h.board[1] +
+    h.board[2] +
+    "]" +
+    ":flop:" +
+    h.flop +
+    "[" +
+    h.board[3] +
+    "]" +
+    ":turn:" +
+    h.turn +
+    "[" +
+    h.board[4] +
+    "]" +
+    ":river:" +
+    h.river;
 
   let I = treeMap[infoSet];
   if (!I) {
@@ -268,9 +278,6 @@ function getActions(h) {
 function doAction(h, action, p) {
   const ha = new History(h);
 
-  if (action === undefined) {
-    console.log("action is undefined");
-  }
   ha.depth++;
 
   switch (ha.bettingRound) {
@@ -536,7 +543,7 @@ function traverseMCCFR(h, p) {
 
     let ha = doAction(h, actions[chosenAction], Ph);
 
-    return traverseMCCFR(ha, p); //according to algo this should be i, but I don't think so. may be Ph
+    return traverseMCCFR(ha, p);
   }
 }
 
@@ -682,8 +689,8 @@ function MCCFR_P(minutes = 1) {
 
 MCCFR_P(1);
 
-Object.keys(treeMap).map(I => {
-  console.log(treeMap[I]);
-});
+// Object.keys(treeMap).map(I => {
+//   console.log(treeMap[I]);
+// });
 
 console.log("we have ", Object.keys(treeMap).length, "entries in the Object");
