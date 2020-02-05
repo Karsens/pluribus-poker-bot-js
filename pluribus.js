@@ -5,7 +5,7 @@ const STRATEGY_INTERVAL = 1000; //10000 for pluribus
 const PRUNE_THRESHOLD = 200; //should be minutes, not iterations
 const LCFR_THRESHOLD = 400;
 const DISCOUNT_INTERVAL = 10; //should be minutes, not iterations
-const PLAYERS = [0, 1, 2];
+const PLAYERS = [0, 1, 2, 3, 4, 5];
 const C = -300000000;
 
 const BETTING_ROUND_PREFLOP = 0;
@@ -16,7 +16,7 @@ const BETTING_OVER = 4;
 //for starters, play with 20 cards.
 const ranks = ["T", "J", "Q", "K", "A"]; //2, 3, 4, 5, 6, 7, 8, 9,
 
-const ALL_ACTIONS = ["fold", "call", "check", "none", "bet1", "bet2"];
+const ALL_ACTIONS = ["fold", "call", "check", "none", "bet"]; //bet2
 const treeMap = {};
 /*
 
@@ -80,7 +80,11 @@ function nextRound(h) {
 
   h.chips = h.chips + h.pBet.reduce((a, b) => a + b, 0);
   h.pBet = PLAYERS.map(p => 0);
-  h.log = h.log.concat([rounds[h.bettingRound] + " comes " + cards.join(",")]);
+  if (h.bettingRound < BETTING_OVER) {
+    h.log = h.log.concat([
+      rounds[h.bettingRound] + " comes " + cards.join(",")
+    ]);
+  }
   return h;
 }
 
@@ -119,6 +123,7 @@ function calculateWinner(h) {
   let showdownWinner;
   const gotToShowdown = haveShowdown(h);
   let showdown;
+  let whoDidnt;
   if (gotToShowdown) {
     const playersInHand = h.pFolded.map(p => !p);
 
@@ -128,12 +133,19 @@ function calculateWinner(h) {
     showdown = scores.map(s => s.descr);
 
     const showdownWinnerCards = Hand.winners(scores);
-    showdownWinner = h.pCards.findIndex(c => c === showdownWinnerCards[0]); //for now, ties are not explored
+    showdownWinner = scores.findIndex(
+      score => score.descr === showdownWinnerCards[0].descr
+    ); //for now, ties are not explored
+
+    h.log = h.log.concat([
+      "Player " + showdownWinner + " wins with " + showdownWinnerCards[0].descr
+    ]);
+  } else {
+    whoDidnt = h.pFolded.findIndex(a => !a);
+    h.log = h.log.concat([
+      "Player " + whoDidnt + " wins because everyone else folded"
+    ]);
   }
-
-  const whoDidnt = h.pFolded.findIndex(a => !a);
-
-  const onlyPlayerLeft = allOthersFolded(h) ? whoDidnt : -1;
 
   h.winner = showdownWinner ? showdownWinner : whoDidnt;
   h.showdown = showdown;
@@ -160,15 +172,18 @@ function needsChanceNode(h) {
       : "";
 
   const everyoneDidAction =
-    lastBettingRoundActions.split(",").length - 1 >= PLAYERS.length;
+    lastBettingRoundActions.split(",").length > PLAYERS.length;
 
   const playersLeft = h.pFolded.map(a => !a);
 
   const playerBets = h.pBet.filter((betSize, i) => playersLeft[i]);
+  const playerChips = h.pChips.filter((betSize, i) => playersLeft[i]);
+
+  const everyoneAllIn = playerChips.every(chips => chips <= 0);
 
   const equalBets = allEqual(playerBets);
 
-  const needsChanceCard = everyoneDidAction && equalBets;
+  const needsChanceCard = (everyoneDidAction || everyoneAllIn) && equalBets;
 
   // console.log(
   //   "needschancenoce",
@@ -250,7 +265,13 @@ const allEqual = arr => arr.every(v => v === arr[0]);
  */
 function getActions(h) {
   const betsAreEqual = allEqual(h.pBet.filter((p, i) => !h.pFolded[i]));
-  const hasChips = h.pChips[h.currentPlayer] > 0;
+
+  const highestBet = Math.max(...h.pBet);
+  const currentBet = h.pBet[h.currentPlayer];
+  const diff = highestBet - currentBet;
+
+  const hasChips = h.pChips[h.currentPlayer] > diff;
+
   const hasFolded = h.pFolded[h.currentPlayer];
 
   let actions = [];
@@ -261,13 +282,13 @@ function getActions(h) {
     if (betsAreEqual) {
       actions = ["check"];
       if (hasChips) {
-        actions = actions.concat(["bet1"]); //bet2
+        actions = actions.concat(["bet"]); //bet2
       }
     } else {
       actions = ["fold", "call"];
 
       if (hasChips) {
-        actions = actions.concat(["bet1"]); //bet2
+        actions = actions.concat(["bet"]); //bet2
       }
     }
   }
@@ -324,7 +345,7 @@ function doAction(h, action, p) {
       ha.log = ha.log.concat(["Player " + ha.currentPlayer + " checks"]);
 
       break;
-    case "bet1":
+    case "bet":
       const potSize = ha.chips + ha.pBet.reduce((a, b) => a + b, 0);
 
       let betSize = potSize;
@@ -496,7 +517,9 @@ function traverseMCCFR(h, p) {
   if (isTerminal(h)) {
     const h2 = calculateWinner(h);
     const utility = getUtility(h2, p);
-    // console.log("Terminal with utility", utility, "H", h);
+    // if (utility > 0) {
+    console.log("Terminal with utility", utility, "H", h);
+    // }
     return utility;
   } else if (!inHand(h, p)) {
     // console.log("!inHand");
@@ -553,18 +576,18 @@ function traverseMCCFR(h, p) {
  * @param {*} p Player i
  */
 function updateStrategy(h, p) {
-  console.log("updatestrategy", p);
+  // console.log("updatestrategy", p);
   if (isTerminal(h) || !inHand(h, p) || h.bettingRound > 0) {
-    console.log("isTerminal(h) || !inHand(h, p) || h.bettingRound > 0");
+    // console.log("isTerminal(h) || !inHand(h, p) || h.bettingRound > 0");
     //average strategy only tracked on the first betting round
     return;
   } else if (needsChanceNode(h)) {
-    console.log("Needs chance node");
+    // console.log("Needs chance node");
     //sample an action from the chance probabilities
     const ha = nextRound(h);
     updateStrategy(ha, p);
   } else if (h.currentPlayer === p) {
-    console.log("getCurrentPlayer(h)====p");
+    // console.log("getCurrentPlayer(h)====p");
     //if history ends with current player to act
     const I = getInformationSet(h, p); // the Player i infoset of this node . GET node?
     const strategyI = calculateStrategy(I.regretSum, h); //determine the strategy at this infoset
@@ -579,7 +602,7 @@ function updateStrategy(h, p) {
     updateStrategy(ha, p);
   } else {
     const actions = getActions(h);
-    console.log("ELSE", h);
+    // console.log("ELSE");
     let ha;
 
     for (let a = 0; a < actions.length; a++) {
@@ -646,9 +669,9 @@ function MCCFR_P(minutes = 1) {
     for (let p = 0; p < PLAYERS.length; p++) {
       // console.log("Player", p);
       const emptyHistory = initiateHistory(t);
-      // if (t % STRATEGY_INTERVAL === 1) {
-      //   updateStrategy(emptyHistory, p);
-      // }
+      if (t % STRATEGY_INTERVAL === 1) {
+        updateStrategy(emptyHistory, p);
+      }
 
       if (t / 60000 > PRUNE_THRESHOLD) {
         const q = Math.random();
