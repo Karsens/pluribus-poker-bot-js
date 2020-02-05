@@ -1,7 +1,7 @@
 var Hand = require("pokersolver").Hand; //https://github.com/goldfire/pokersolver
 const TreeMap = require("treemap-js");
 
-const STRATEGY_INTERVAL = 10000;
+const STRATEGY_INTERVAL = 1000; //10000 for pluribus
 const PRUNE_THRESHOLD = 200; //should be minutes, not iterations
 const LCFR_THRESHOLD = 400;
 const DISCOUNT_INTERVAL = 10; //should be minutes, not iterations
@@ -158,18 +158,32 @@ function needsChanceNode(h) {
       : h.bettingRound === BETTING_ROUND_PREFLOP
       ? h.preflop
       : "";
+
   const everyoneDidAction =
-    lastBettingRoundActions.split(",").length > PLAYERS.length;
+    lastBettingRoundActions.split(",").length - 1 > PLAYERS.length;
 
-  const playersLeft = h.pLastAction.map(a => a === "fold" || a === "none");
+  const playersLeft = h.pFolded.map(a => !a);
 
-  const playerBets = h.pBet.filter((betSize, i) => !playersLeft[i]);
+  const playerBets = h.pBet.filter((betSize, i) => playersLeft[i]);
 
   const equalBets = allEqual(playerBets);
 
   const needsChanceCard = everyoneDidAction && equalBets;
 
-  // console.log("needschancenoce", needsChanceCard);
+  // console.log(
+  //   "needschancenoce",
+  //   needsChanceCard,
+  //   "lastBettingRoundActions",
+  //   lastBettingRoundActions,
+  //   "everyoneDidAction",
+  //   everyoneDidAction,
+  //   "playersLeft",
+  //   playersLeft,
+  //   "playerBets",
+  //   playerBets,
+  //   "equalBets",
+  //   equalBets
+  // );
   return needsChanceCard;
 }
 
@@ -225,11 +239,11 @@ const allEqual = arr => arr.every(v => v === arr[0]);
  * @param {*} h history
  */
 function getActions(h) {
-  const betsAreEqual = allEqual(h.pBet);
+  const betsAreEqual = allEqual(h.pBet.filter((p, i) => !h.pFolded[i]));
   const hasChips = h.pChips[h.currentPlayer] > 0;
   const hasFolded = h.pFolded[h.currentPlayer];
 
-  let actions = "raar";
+  let actions = [];
 
   if (hasFolded) {
     actions = ["none"];
@@ -254,7 +268,9 @@ function getActions(h) {
 function doAction(h, action, p) {
   const ha = new History(h);
 
-  // console.log("ha", ha);
+  if (action === undefined) {
+    console.log("action is undefined");
+  }
   ha.depth++;
 
   switch (ha.bettingRound) {
@@ -330,13 +346,13 @@ function doAction(h, action, p) {
  */
 function randomActionFromStrategy(strategy) {
   const c = Math.random();
-  let strategySum = strategy[0];
+  let strategySum = 0;
 
   for (let i = 0; i < strategy.length; i++) {
+    strategySum += strategy[i];
+
     if (c < strategySum) {
       return i;
-    } else {
-      strategySum += strategy[i];
     }
   }
 }
@@ -470,11 +486,11 @@ function traverseMCCFR_P(h, p) {
  * update the reegrets for Player i
  */
 function traverseMCCFR(h, p) {
-  console.log("traverseMCCFR", p);
+  // console.log("traverseMCCFR", p);
   if (isTerminal(h)) {
     const h2 = calculateWinner(h);
     const utility = getUtility(h2, p);
-    console.log("Terminal with utility", utility, "H", h);
+    // console.log("Terminal with utility", utility, "H", h);
     return utility;
   } else if (!inHand(h, p)) {
     // console.log("!inHand");
@@ -533,16 +549,16 @@ function traverseMCCFR(h, p) {
 function updateStrategy(h, p) {
   console.log("updatestrategy", p);
   if (isTerminal(h) || !inHand(h, p) || h.bettingRound > 0) {
-    // console.log("isTerminal(h) || !inHand(h, p) || h.bettingRound > 0");
+    console.log("isTerminal(h) || !inHand(h, p) || h.bettingRound > 0");
     //average strategy only tracked on the first betting round
     return;
   } else if (needsChanceNode(h)) {
-    // console.log("Needs chance node");
+    console.log("Needs chance node");
     //sample an action from the chance probabilities
     const ha = nextRound(h);
     updateStrategy(ha, p);
   } else if (h.currentPlayer === p) {
-    // console.log("getCurrentPlayer(h)====p");
+    console.log("getCurrentPlayer(h)====p");
     //if history ends with current player to act
     const I = getInformationSet(h, p); // the Player i infoset of this node . GET node?
     const strategyI = calculateStrategy(I.regretSum, h); //determine the strategy at this infoset
@@ -557,12 +573,12 @@ function updateStrategy(h, p) {
     updateStrategy(ha, p);
   } else {
     const actions = getActions(h);
-    // console.log("ELSE");
+    console.log("ELSE", h);
     let ha;
 
     for (let a = 0; a < actions.length; a++) {
       ha = doAction(h, actions[a], p);
-      updateStrategy({ ...ha }, p); //traverse each action
+      updateStrategy(ha, p); //traverse each action
     }
   }
 }
@@ -624,9 +640,9 @@ function MCCFR_P(minutes = 1) {
     for (let p = 0; p < PLAYERS.length; p++) {
       // console.log("Player", p);
       const emptyHistory = initiateHistory(t);
-      if (t % STRATEGY_INTERVAL === 1) {
-        updateStrategy(emptyHistory, p);
-      }
+      // if (t % STRATEGY_INTERVAL === 1) {
+      //   updateStrategy(emptyHistory, p);
+      // }
 
       if (t / 60000 > PRUNE_THRESHOLD) {
         const q = Math.random();
