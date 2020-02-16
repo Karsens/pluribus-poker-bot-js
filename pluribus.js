@@ -1,11 +1,12 @@
 var Hand = require("pokersolver").Hand; //https://github.com/goldfire/pokersolver
-const TreeMap = require("treemap-js");
+
+const STARTING_STACK = 10000;
 
 const STRATEGY_INTERVAL = 1000; //10000 for pluribus
-const PRUNE_THRESHOLD = 200; //should be minutes, not iterations
+const PRUNE_THRESHOLD = 200;
 const LCFR_THRESHOLD = 400;
-const DISCOUNT_INTERVAL = 10; //should be minutes, not iterations
-const PLAYERS = [0, 1, 2, 3, 4, 5];
+const DISCOUNT_INTERVAL = 2; //10 in pluribus
+const PLAYERS = [0, 1];
 const C = -300000000;
 
 const BETTING_ROUND_PREFLOP = 0;
@@ -14,7 +15,7 @@ const BETTING_ROUND_TURN = 2;
 const BETTING_ROUND_RIVER = 3;
 const BETTING_OVER = 4;
 //for starters, play with 20 cards.
-const ranks = ["T", "J", "Q", "K", "A"]; //2, 3, 4, 5, 6, 7, 8, 9,
+const ranks = [6, 7, 8, 9, "T", "J", "Q", "K", "A"];
 
 const ALL_ACTIONS = ["fold", "call", "check", "none", "bet"]; //bet2
 const treeMap = {};
@@ -94,7 +95,6 @@ function allOthersFolded(h) {
 
 function isTerminal(h) {
   const isTerminal = allOthersFolded(h) || h.bettingRound === BETTING_OVER;
-
   return isTerminal;
 }
 
@@ -209,30 +209,210 @@ function getCurrentPlayerFromInfoSet(infoSet) {
   return currentPlayer;
 }
 
+function getActionsInfoSet(h, p) {
+  const potSize = h.pMPIP.reduce((a, b) => a + b, 0);
+  const totalChips = PLAYERS.length * STARTING_STACK;
+  const potSizeBuckets = Math.floor((potSize / totalChips) * 10); //expect to be 0-9, linear to potSize/totalChips ratio
+
+  const playersRemain = h.pFolded
+    .map(folded => (folded ? "0" : "1"))
+    .reduce((a, b) => a + b, ""); // expect to be 010101 in order of position so 2^players combinations
+
+  const allBetsSize = h.pBet.reduce((a, b) => a + b, 0);
+  const potSizeWithBets = potSize + allBetsSize;
+  const myBet = h.pBet[p];
+  const biggestBet = Math.max(...h.pBet);
+  const toCall = biggestBet - myBet;
+  const potOdds = toCall / potSizeWithBets;
+  const potOddsBuckets = Math.floor(potOdds * 10); //expect it to be 0-9
+
+  const positions = PLAYERS.map((p, i) => PLAYERS.length - i); //for six players, expect to be [5,4,3,2,1,0]
+  let myPosition = positions[p]; //0 is sb, players.length is dealer. so the higher the better. however, sometimes, you're in position depending on other players folded. this has to be taken into account. Therefore, 0 should be in position. then substract players that have folded
+  for (let pl = p + 1; pl < PLAYERS.length; pl++) {
+    if (h.pFolded[pl]) {
+      myPosition--;
+    }
+  }
+  //expect myposition to be 0 if in position, 1 if almost in position, etc. so 0-8 for 9 players
+
+  const bettingRound = h.bettingRound;
+
+  const actionsString =
+    bettingRound +
+    myPosition +
+    potOddsBuckets +
+    potSizeBuckets +
+    "," +
+    playersRemain; //expect it to be something like 1023,000111
+
+  return actionsString;
+}
+
+function getHandStrength(ourCards, board) {
+  //should return number indicating how strong your hand is. should return about 30 combinations
+  const STRAIGHT_OR_ROYAL_FLUSH = 1;
+  const FOUR_OF_A_KIND = 2;
+  const FULL_HOUSE_HIGH = 3;
+  const FULL_HOUSE_MID = 4;
+  const FULL_HOUSE_LOW = 5;
+  const FLUSH_HIGH = 6;
+  const FLUSH_MID = 7;
+  const FLUSH_LOW = 8;
+  const STRAIGHT_HIGH = 9; //678[9T]
+  const STRAIGHT_MID = 10; //[5]678[9]
+  const STRAIGHT_LOW = 11; //[56]789
+  const THREE_OF_A_KIND_HIGH = 12;
+  const THREE_OF_A_KIND_MID = 13;
+  const THREE_OF_A_KIND_LOW = 14;
+  const TWO_PAIR_HIGH_TOP_KICKER = 15;
+  const TWO_PAIR_HIGH_MID_KICKER = 16;
+  const TWO_PAIR_HIGH_LOW_KICKER = 17;
+  const TWO_PAIR_MID = 18;
+  const TWO_PAIR_LOW = 19;
+  const FLUSH_DRAW = 20;
+  const STRAIGHT_DRAW = 21;
+  const TOP_PAIR_TOP_KICKER = 22;
+  const TOP_PAIR_MID_KICKER = 23;
+  const TOP_PAIR_LOW_KICKER = 24;
+  const MID_PAIR = 25;
+  const LOW_PAIR = 26;
+  const HIGH_CARD_TOP = 27;
+  const HIGH_CARD_MID = 28;
+  const HIGH_CARD_LOW = 29;
+
+  const cards = ourCards.concat(board);
+  const cardsWithoutSuit = cards.map(card => card.charAt(0));
+
+  return Math.ceil(HIGH_CARD_LOW * Math.random()); //1-29
+}
+
+function getBoardStrength(cards) {
+  const cardsWithoutSuit = cards.map(card => card.charAt(0));
+  const cardCount = cardsWithoutSuit.map(
+    rank => cardsWithoutSuit.filter(rank2 => rank2 === rank).length
+  );
+  let pairs = "X";
+  const hasPair = cardCount.filter(c => c === 2).length;
+  const hasTrips = cardCount.filter(c => c === 3).length;
+  const hasQuads = cardCount.filter(c => c === 4).length;
+  if (cardCount.every(x => x === 1)) {
+    pairs = "0";
+  } else if (hasPair === 2 && hasTrips === 3) {
+    pairs = "4";
+  } else if (hasPair === 2) {
+    pairs = "1";
+  } else if (hasPair === 4) {
+    pairs = "2";
+  } else if (hasTrips === 3) {
+    pairs = "3";
+  } else if (hasQuads === 4) {
+    pairs = "5";
+  }
+  //pairs 0,1,2,3,4,5 for no pair, one pair, two pair, trips, fullhouse, quads respectively.
+
+  const cardSuits = cards.map(card => card.charAt(1));
+  const suitCount = cardSuits.map(
+    suit1 => cardSuits.filter(suit2 => suit2 === suit1).length
+  );
+  let flushiness = "Y";
+  const hasTwoSuits = suitCount.filter(s => s === 2).length;
+  const hasThreeSuits = suitCount.filter(s => s === 3).length;
+  const hasFourSuits = suitCount.filter(s => s === 4).length;
+  const hasFlush = suitCount.filter(s => s === 5).length;
+
+  if (suitCount.every(amount => amount === 1)) {
+    flushiness = "0";
+  } else if (hasTwoSuits === 2) {
+    flushiness = "1";
+  } else if (hasTwoSuits === 4) {
+    flushiness = "2";
+  } else if (hasThreeSuits === 3) {
+    flushiness = "3";
+  } else if (hasFourSuits === 4) {
+    flushiness = "4";
+  } else if (hasFlush === 5) {
+    flushiness = "5";
+  }
+  //flushiness 0,1,2,3,4,5
+
+  const cardsWithoutSuitWithoutPairs = cardsWithoutSuit.filter(
+    (c, i) => cardsWithoutSuit.findIndex(c2 => c2 === c) === i
+  );
+
+  const ranksWithoutSuitWithoutPairs = cardsWithoutSuitWithoutPairs.map(
+    card => {
+      if (card === "A") return 14;
+      if (card === "K") return 13;
+      if (card === "Q") return 12;
+      if (card === "J") return 11;
+      return Number(card);
+    }
+  );
+
+  const sorted = ranksWithoutSuitWithoutPairs.sort(); //something like 8 10 12 or 8 10
+
+  const diff = sorted
+    .map((rank, i) => (sorted[i + 1] ? sorted[i + 1] - rank : undefined))
+    .filter(diff => !!diff); //something like 1,1,1,1 for a straight
+  const diffString = diff.join("");
+  let straightiness = "Z";
+
+  if (diff.every(d => d === 1) && sorted.length === 5) {
+    //straight on board
+    straightiness = "5";
+  } else if (diffString.includes("111")) {
+    //open ended on board
+    straightiness = "4";
+  } else if (
+    diffString.includes("112") ||
+    diffString.includes("121") ||
+    diffString.includes("211")
+  ) {
+    //gutter on board
+    straightiness = "3";
+  } else if (diffString.includes("1") || diffString.includes("2")) {
+    // open ended or double gutter possible
+    straightiness = "2";
+  } else if (diffString.includes("3")) {
+    straightiness = "1";
+  } else {
+    straightiness = "0";
+  }
+  //straightiness 0,1,2,3,4 for nothing possible, openended or gutter unlikely, open ended or (double)gutter possible, gutter on board, open ended on board, straight on board.
+
+  const boardStrength = pairs + flushiness + straightiness;
+  console.log("cards", cards, "becomes ", boardStrength);
+  return boardStrength;
+  //should return string indicating [pairs][flushyness][straightyness] like 000 for A5To for a total of 216 combinations
+}
+
 function getInformationSet(h, p) {
   const actions = getActions(h);
-  const infoSet =
-    p +
-    ":preflop:" +
-    h.preflop +
-    "[" +
-    h.board[0] +
-    h.board[1] +
-    h.board[2] +
-    "]" +
-    ":flop:" +
-    h.flop +
-    "[" +
-    h.board[3] +
-    "]" +
-    ":turn:" +
-    h.turn +
-    "[" +
-    h.board[4] +
-    "]" +
-    ":river:" +
-    h.river;
 
+  let infoSet;
+
+  const actionsInfoSet = getActionsInfoSet(h, p);
+
+  if (h.bettingRound === BETTING_ROUND_PREFLOP) {
+    const card1 = h.pCards[p][0].charAt(0);
+    const card2 = h.pCards[p][1].charAt(0);
+    const first = card1 < card2 ? card1 : card2;
+    const second = card1 < card2 ? card2 : card1;
+
+    const cards =
+      first +
+      second +
+      (h.pCards[p][0].charAt(1) === h.pCards[p][1].charAt(1) ? "s" : "o");
+
+    infoSet = cards + actionsInfoSet;
+  } else {
+    const handStrength = getHandStrength(h.pCards[p], h.board);
+    const boardStrength = getBoardStrength(h.board, h.bettingRound);
+
+    infoSet = handStrength + boardStrength + actionsInfoSet;
+  }
+
+  // console.log("infoset", infoSet);
   let I = treeMap[infoSet];
   if (!I) {
     //if undefined, create new and return that one
@@ -385,22 +565,8 @@ function randomActionFromStrategy(strategy) {
   }
 }
 
-function getBettingRound(I) {
-  const chanceSequence = I.infoSet
-    .split(",")
-    .filter(action => !ALL_ACTIONS.includes(action));
-
-  const boardCards = chanceSequence.length / 2;
-
-  if (boardCards === 0) {
-    return 0;
-  } else if (boardCards === 3) {
-    return 1;
-  } else if (boardCards === 4) {
-    return 2;
-  } else {
-    return 3;
-  }
+function isPreflop(I) {
+  I.infoSet.length < 10; //to be determined. preflop infoset keys are shorter, but the bettinground is also included in the infoset.
 }
 
 function getActionsFromInfoSet(I) {
@@ -441,13 +607,19 @@ function initiateHistory(ms) {
     chips: 150,
     pLastAction: PLAYERS.map(p => null),
     pFolded: PLAYERS.map(p => false),
-    pChips: PLAYERS.map(p => (p === 0 ? 9950 : p === 1 ? 9900 : 10000)),
+    pChips: PLAYERS.map(p =>
+      p === 0
+        ? STARTING_STACK - 50
+        : p === 1
+        ? STARTING_STACK - 100
+        : STARTING_STACK
+    ),
     pCards: PLAYERS.map(p => [deck.pop(), deck.pop()]),
     pMPIP: PLAYERS.map(p => (p === 0 ? 50 : p === 1 ? 100 : 0)),
     pBet: PLAYERS.map(p => (p === 0 ? 50 : p === 1 ? 100 : 0)),
     deck: deck.slice(),
     depth: 0,
-    currentPlayer: 2,
+    currentPlayer: PLAYERS.length > 2 ? 2 : 1,
     showdown: [],
     winner: undefined
   });
@@ -518,7 +690,7 @@ function traverseMCCFR(h, p) {
     const h2 = calculateWinner(h);
     const utility = getUtility(h2, p);
     // if (utility > 0) {
-    console.log("Terminal with utility", utility, "H", h);
+    // console.log("Terminal with utility", utility, "H", h);
     // }
     return utility;
   } else if (!inHand(h, p)) {
@@ -530,7 +702,7 @@ function traverseMCCFR(h, p) {
     const ha = nextRound(h);
     return traverseMCCFR(ha, p);
   } else if (h.currentPlayer === p) {
-    // console.log("You");
+    // console.log("You", p);
     //if history ends with current player to act
     const I = getInformationSet(h, p); // the Player i infoset of this node . GET node?
     const strategyI = calculateStrategy(I.regretSum, h); //determine the strategy at this infoset
@@ -575,7 +747,7 @@ function traverseMCCFR(h, p) {
  * @param {*} h history
  * @param {*} p Player i
  */
-function updateStrategy(h, p) {
+function updateStrategy(h, p, depth) {
   // console.log("updatestrategy", p);
   if (isTerminal(h) || !inHand(h, p) || h.bettingRound > 0) {
     // console.log("isTerminal(h) || !inHand(h, p) || h.bettingRound > 0");
@@ -585,7 +757,7 @@ function updateStrategy(h, p) {
     // console.log("Needs chance node");
     //sample an action from the chance probabilities
     const ha = nextRound(h);
-    updateStrategy(ha, p);
+    updateStrategy(ha, p, depth++);
   } else if (h.currentPlayer === p) {
     // console.log("getCurrentPlayer(h)====p");
     //if history ends with current player to act
@@ -595,11 +767,22 @@ function updateStrategy(h, p) {
     const a = randomActionFromStrategy(strategyI); //sample an action from the probability distribution
 
     const actionCounter = I.actionCounter;
+
     actionCounter[a] = actionCounter[a] + 1;
-    treeMap[I.infoSet] = { ...I, actionCounter }; //increment action counter
+
+    if (actionCounter[a] > 1) {
+      console.log(
+        "Incrementing actioncounter and chancing strategy of ",
+        I.infoSet,
+        actionCounter,
+        strategyI
+      );
+    }
+
+    treeMap[I.infoSet] = { ...I, actionCounter, strategyI }; //increment action and add strategy
 
     const ha = doAction(h, actions[a], p);
-    updateStrategy(ha, p);
+    updateStrategy(ha, p, depth++);
   } else {
     const actions = getActions(h);
     // console.log("ELSE");
@@ -607,7 +790,7 @@ function updateStrategy(h, p) {
 
     for (let a = 0; a < actions.length; a++) {
       ha = doAction(h, actions[a], p);
-      updateStrategy(ha, p); //traverse each action
+      updateStrategy(ha, p, depth++); //traverse each action
     }
   }
 }
@@ -649,7 +832,7 @@ function MCCFR_P(minutes = 1) {
 
         for (let a = 0; a < actions.length; a++) {
           regretSum[a] = 0;
-          if (getBettingRound(I) === BETTING_ROUND_PREFLOP) {
+          if (isPreflop(I)) {
             strategy[a] = 0; // 𝜙(Ii,a) = 0; not sure if this is correct
           }
         }
@@ -666,11 +849,12 @@ function MCCFR_P(minutes = 1) {
       console.log("iterations", iterations, "time", Math.round(t / 1000));
     }
 
+    const emptyHistory = initiateHistory(t);
+
     for (let p = 0; p < PLAYERS.length; p++) {
       // console.log("Player", p);
-      const emptyHistory = initiateHistory(t);
       if (t % STRATEGY_INTERVAL === 1) {
-        updateStrategy(emptyHistory, p);
+        updateStrategy(emptyHistory, p, 0);
       }
 
       if (t / 60000 > PRUNE_THRESHOLD) {
@@ -686,20 +870,16 @@ function MCCFR_P(minutes = 1) {
     }
 
     // every 10 minutes, discount regrets and [strategies?] with factor d
-    if (t < LCFR_THRESHOLD && t % DISCOUNT_INTERVAL === 0) {
-      const d = t / DISCOUNT_INTERVAL / (t / DISCOUNT_INTERVAL + 1);
+    if (t < LCFR_THRESHOLD && (t / 60000) % DISCOUNT_INTERVAL === 0) {
+      const m = t / 60000;
+      const d = m / DISCOUNT_INTERVAL / (m / DISCOUNT_INTERVAL + 1);
 
       for (let p = 0; p < PLAYERS.length; p++) {
         Object.keys(treeMap).map(key => {
           const I = treeMap[key];
           if (getCurrentPlayerFromInfoSet(I.infoSet) === p) {
-            const actions = getActionsFromInfoSet(I);
-            let regretSum = I.regretSum;
-            let strategy = I.strategy;
-            for (let a = 0; a < actions.length; a++) {
-              regretSum[a] = I.regretSum[a] * d;
-              strategy[a] = I.strategy[a] * d;
-            }
+            let regretSum = I.regretSum.map(Ra => Ra * d);
+            let strategy = I.strategy.map(Sa => Sa * d);
             treeMap[I.infoSet] = { ...I, regretSum, strategy };
           }
         });
@@ -710,7 +890,7 @@ function MCCFR_P(minutes = 1) {
   return 0; // return 𝜙. must be strategy
 }
 
-MCCFR_P(1);
+MCCFR_P(60);
 
 // Object.keys(treeMap).map(I => {
 //   console.log(treeMap[I]);
