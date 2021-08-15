@@ -1,0 +1,51 @@
+Arguments: 
+  /Users/wijnandkarsens/.nvm/versions/node/v15.14.0/bin/node /Users/wijnandkarsens/.nvm/versions/node/v15.14.0/bin/yarn build
+
+PATH: 
+  /Users/wijnandkarsens/.nvm/versions/node/v15.14.0/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Library/Apple/usr/bin:/Users/wijnandkarsens/.nvm/versions/node/v15.14.0/bin:/opt/homebrew/bin:/opt/homebrew/sbin
+
+Yarn version: 
+  1.22.10
+
+Node version: 
+  15.14.0
+
+Platform: 
+  darwin arm64
+
+Trace: 
+  SyntaxError: /Users/wijnandkarsens/Documents/Code Tot Juni 2021/poker1/pluribus/package.json: Unexpected string in JSON at position 261
+      at JSON.parse (<anonymous>)
+      at /Users/wijnandkarsens/.nvm/versions/node/v15.14.0/lib/node_modules/yarn/lib/cli.js:1625:59
+      at Generator.next (<anonymous>)
+      at step (/Users/wijnandkarsens/.nvm/versions/node/v15.14.0/lib/node_modules/yarn/lib/cli.js:310:30)
+      at /Users/wijnandkarsens/.nvm/versions/node/v15.14.0/lib/node_modules/yarn/lib/cli.js:321:13
+
+npm manifest: 
+  {
+    "name": "pluribus",
+    "version": "1.0.0",
+    "description": "",
+    "main": "pluribus.js",
+    "scripts": {
+      "test": "echo \"Error: no test specified\" && exit 1",
+      "dev": "node --max-old-space-size=8192 pluribus",
+      "build":"node build pluribus.js"
+      "cluster": "pm2 start pluribus.js -i max --node-args=\"--max-old-space-size=8192\"",
+      "stopCluster": "pm2 stop pluribus",
+      "log": "pm2 logs pluribus",
+      "showCluster": "pm2 show pluribus"
+    },
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+      "pokersolver": "^2.1.3",
+      "treemap-js": "^1.2.1"
+    }
+  }
+
+yarn manifest: 
+  No manifest
+
+Lockfile: 
+  No lockfile

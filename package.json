@@ -5,12 +5,19 @@
   "main": "pluribus.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "run": "node --max-old-space-size=16384 pluribus"
+    "dev": "node --max-old-space-size=8192 pluribus",
+    "build": "babel lib -d dist",
+    "cluster": "pm2 start dist/index.js -i max --node-args=\"--max-old-space-size=8192\""
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "pokersolver": "^2.1.3",
     "treemap-js": "^1.2.1"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "cloc": "^2.5.1",
+    "nodemon": "^2.0.2"
   }
 }
