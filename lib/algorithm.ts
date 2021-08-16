@@ -47,7 +47,7 @@ function getActionsFromInfoSet(I: InfoSetData) {
 }
 
 //MCCFR with pruning for very negative regrets
-function traverseMCCFR_P(h: HandHistory, p: number): number {
+async function traverseMCCFR_P(h: HandHistory, p: number): Promise<number> {
   // console.log("traversemccfr-p", p);
   if (isTerminal(h)) {
     const h2 = calculateWinner(h);
@@ -61,7 +61,7 @@ function traverseMCCFR_P(h: HandHistory, p: number): number {
     return traverseMCCFR_P(ha, p);
   } else if (h.currentPlayer === p) {
     //if history ends with current player to act
-    const I = getInformationSet(h, p); // the Player i infoset of this node . GET node?
+    const I = await getInformationSet(h, p); // the Player i infoset of this node . GET node?
     const strategyI = calculateStrategy(I.regretSum, h); //determine the strategy at this infoset
 
     let v = 0;
@@ -71,7 +71,7 @@ function traverseMCCFR_P(h: HandHistory, p: number): number {
     for (let a = 0; a < actions.length; a++) {
       if (I.regretSum[a] > Constants.C) {
         const ha = doAction(h, actions[a], p);
-        va[a] = traverseMCCFR_P(ha, p);
+        va[a] = await traverseMCCFR_P(ha, p);
         explored[a] = true;
         v = v + strategyI[a] * va[a];
       } else {
@@ -94,7 +94,7 @@ function traverseMCCFR_P(h: HandHistory, p: number): number {
     return v;
   } else {
     const Ph = h.currentPlayer;
-    const I = getInformationSet(h, Ph);
+    const I = await getInformationSet(h, Ph);
     const strategy = calculateStrategy(I.regretSum, h);
     const actions = getActions(h);
     const chosenAction = randomActionFromStrategy(strategy); //sample an action from the probability distribution
@@ -107,7 +107,7 @@ function traverseMCCFR_P(h: HandHistory, p: number): number {
 /**
  * update the reegrets for Player i
  */
-function traverseMCCFR(h: HandHistory, p: number): number {
+async function traverseMCCFR(h: HandHistory, p: number): Promise<number> {
   // console.log("traverse it ", h, p);
   if (isTerminal(h)) {
     const h2 = calculateWinner(h);
@@ -127,7 +127,7 @@ function traverseMCCFR(h: HandHistory, p: number): number {
   } else if (h.currentPlayer === p) {
     // console.log("You", p);
     //if history ends with current player to act
-    const I = getInformationSet(h, p); // the Player i infoset of this node . GET node?
+    const I = await getInformationSet(h, p); // the Player i infoset of this node . GET node?
     const strategyI = calculateStrategy(I.regretSum, h); //determine the strategy at this infoset
 
     let v = 0;
@@ -136,7 +136,7 @@ function traverseMCCFR(h: HandHistory, p: number): number {
     let ha;
     for (let a = 0; a < actions.length; a++) {
       ha = doAction(h, actions[a], p);
-      va[a] = traverseMCCFR(ha, p);
+      va[a] = await traverseMCCFR(ha, p);
       v = v + strategyI[a] * va[a];
     }
 
@@ -158,7 +158,7 @@ function traverseMCCFR(h: HandHistory, p: number): number {
   } else {
     const Ph = h.currentPlayer;
     // console.log("Player", Ph, "'s turn");
-    const I = getInformationSet(h, Ph);
+    const I = await getInformationSet(h, Ph);
     const strategy = calculateStrategy(I.regretSum, h);
     const actions = getActions(h);
     const chosenAction = randomActionFromStrategy(strategy); //sample an action from the probability distribution
@@ -181,7 +181,7 @@ function traverseMCCFR(h: HandHistory, p: number): number {
  * @param {*} h history
  * @param {*} p Player i
  */
-function updateStrategy(h: HandHistory, p: number, depth: number) {
+async function updateStrategy(h: HandHistory, p: number, depth: number) {
   // console.log("updatestrategy", p);
   if (isTerminal(h) || !inHand(h, p) || h.bettingRound > 0) {
     // console.log("isTerminal(h) || !inHand(h, p) || h.bettingRound > 0");
@@ -195,7 +195,7 @@ function updateStrategy(h: HandHistory, p: number, depth: number) {
   } else if (h.currentPlayer === p) {
     // console.log("getCurrentPlayer(h)====p");
     //if history ends with current player to act
-    const I = getInformationSet(h, p); // the Player i infoset of this node . GET node?
+    const I = await getInformationSet(h, p); // the Player i infoset of this node . GET node?
     const strategyI = calculateStrategy(I.regretSum, h); //determine the strategy at this infoset
     const actions = getActions(h);
     const a = randomActionFromStrategy(strategyI); //sample an action from the probability distribution
@@ -262,7 +262,7 @@ function calculateStrategy(R: number[], h: HandHistory) {
   return strategyI;
 }
 
-export function MCCFR_P(minutes = 1) {
+export async function MCCFR_P(minutes = 1) {
   // do this but then go over all files in /data....
 
   // for (let p = 0; p < PLAYERS.length; p++) {
@@ -303,12 +303,12 @@ export function MCCFR_P(minutes = 1) {
       if (t / 60000 > Constants.PRUNE_THRESHOLD) {
         const q = Math.random();
         if (q < 0.05) {
-          traverseMCCFR(emptyHistory, p);
+          await traverseMCCFR(emptyHistory, p);
         } else {
-          traverseMCCFR_P(emptyHistory, p);
+          await traverseMCCFR_P(emptyHistory, p);
         }
       } else {
-        traverseMCCFR(emptyHistory, p);
+        await traverseMCCFR(emptyHistory, p);
       }
     }
 
